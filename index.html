@@ -249,9 +249,13 @@
             }
         }
 
+        // GitHub Configuration
+        window.GITHUB_USERNAME = 'your-username';
+        window.GITHUB_REPO = 'your-repo';
+
         function loadLogoFromGitHub() {
-            // Replace with your GitHub raw content URL
-            const githubLogoUrl = 'https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/itclub.png';
+            // Load logo from GitHub raw content
+            const githubLogoUrl = `https://raw.githubusercontent.com/${window.GITHUB_USERNAME}/${window.GITHUB_REPO}/main/itclub.png`;
             console.log("[DEBUG] Loading logo from GitHub:", githubLogoUrl);
             
             const logoEl = document.getElementById('club-logo');
@@ -265,6 +269,16 @@
                 logoEl.src = githubLogoUrl;
             }
         }
+
+        // Update GitHub credentials dynamically
+        window.setGitHubCredentials = (username, repo) => {
+            window.GITHUB_USERNAME = username;
+            window.GITHUB_REPO = repo;
+            loadLogoFromGitHub();
+            const githubLink = document.querySelector('a[href*="github.com"]');
+            if(githubLink) githubLink.href = `https://github.com/${username}/${repo}`;
+            console.log("[DEBUG] GitHub credentials updated:", username, "/", repo);
+        };
 
         async function initializeDefaultData() {
             // Creates the document structure if it doesn't exist
@@ -982,6 +996,9 @@
                         <button onclick="navigateTo('home')" class="nav-link text-gray-600 hover:text-blue-600 text-sm font-medium transition-smooth" data-target="home">Home</button>
                         <button onclick="navigateTo('submit')" class="nav-link text-gray-600 hover:text-blue-600 text-sm font-medium transition-smooth" data-target="submit">Submit</button>
                         <button onclick="navigateTo('winners')" class="nav-link text-gray-600 hover:text-blue-600 text-sm font-medium transition-smooth" data-target="winners">Winners</button>
+                        <a href="https://github.com/your-username/your-repo" target="_blank" rel="noopener noreferrer" class="text-gray-600 hover:text-gray-900 text-lg font-medium transition-smooth" title="View on GitHub">
+                            <i class="fab fa-github"></i>
+                        </a>
                         <button id="nav-admin" class="nav-link text-blue-600 hover:text-blue-700 text-sm font-medium transition-smooth">Admin</button>
                     </div>
                 </div>
