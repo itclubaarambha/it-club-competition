@@ -176,25 +176,94 @@
 
         // --- DATA FETCHING (PUBLIC) ---
         async function initPublicData() {
-            if(!db) return;
+            if(!db) {
+                console.warn("Firebase not initialized, loading from localStorage only");
+                loadLogoFromLocalStorage();
+                return;
+            }
 
-            // 1. Listen to Competition Details and Program Type
+            // 1. Listen to Competition Details, Program Type, and Logo
             const configRef = doc(db, 'artifacts', APP_ID, 'settings', 'config');
+            console.log(`[DEBUG] Listening to Firebase: artifacts/${APP_ID}/settings/config`);
+            
             onSnapshot(configRef, (docSnap) => {
                 if (docSnap.exists()) {
                     const data = docSnap.data();
+                    console.log("[DEBUG] Full Firebase data received:", JSON.stringify(data, null, 2));
+                    console.log("[DEBUG] logoData present?", !!data.logoData);
+                    console.log("[DEBUG] logoData length:", data.logoData ? data.logoData.length : 0);
+                    
                     state.competitionDetails = data.details || state.competitionDetails;
                     state.winners = data.winners || { first: null, second: null, third: null };
                     state.programType = data.programType || 'graphics'; // Load program type
+                    
+                    // Load logo from Firebase if available
+                    if(data.logoData && data.logoData.trim()) {
+                        console.log("[DEBUG] Loading logo from Firebase - data is valid");
+                        const logoEl = document.getElementById('club-logo');
+                        const previewEl = document.getElementById('logo-preview');
+                        if(logoEl) {
+                            logoEl.src = data.logoData;
+                            console.log("[DEBUG] Logo src updated on club-logo element");
+                        }
+                        if(previewEl) {
+                            previewEl.src = data.logoData;
+                            previewEl.classList.remove('hidden');
+                            console.log("[DEBUG] Logo src updated on logo-preview element");
+                        }
+                        localStorage.setItem('aarambha_logo', data.logoData);
+                    } else {
+                        console.log("[DEBUG] No logoData in Firebase, trying localStorage...");
+                        loadLogoFromLocalStorage();
+                    }
                     
                     updateUIWithDetails();
                     updateUIWithWinners();
                     updateProgramUI(); // Update UI based on program type
                 } else {
                     // Initialize default data if not exists (First Run)
+                    console.log("[DEBUG] No config document found, initializing default data...");
                     initializeDefaultData();
+                    loadLogoFromLocalStorage();
                 }
+            }, (error) => {
+                console.error("[ERROR] Error loading data from Firebase:", error);
+                console.error("[ERROR] Error code:", error.code);
+                console.error("[ERROR] Error message:", error.message);
+                loadLogoFromLocalStorage();
             });
+        }
+
+        function loadLogoFromLocalStorage() {
+            const savedLogo = localStorage.getItem('aarambha_logo');
+            console.log("[DEBUG] Loading from localStorage - logo present?", !!savedLogo);
+            if(savedLogo) {
+                const logoEl = document.getElementById('club-logo');
+                if(logoEl) {
+                    logoEl.src = savedLogo;
+                    console.log("[DEBUG] Logo loaded from localStorage");
+                }
+            } else {
+                // Fallback to GitHub if no local logo
+                loadLogoFromGitHub();
+            }
+        }
+
+        function loadLogoFromGitHub() {
+            // Replace with your GitHub raw content URL
+            const githubLogoUrl = 'https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/itclub.png';
+            console.log("[DEBUG] Loading logo from GitHub:", githubLogoUrl);
+            
+            const logoEl = document.getElementById('club-logo');
+            if(logoEl) {
+                logoEl.onerror = () => {
+                    console.warn("[DEBUG] Failed to load logo from GitHub");
+                };
+                logoEl.onload = () => {
+                    console.log("[DEBUG] Logo loaded successfully from GitHub");
+                };
+                logoEl.src = githubLogoUrl;
+            }
         }
 
         async function initializeDefaultData() {
@@ -584,20 +653,41 @@
             setLoading(true);
             try {
                 const reader = new FileReader();
-                reader.onload = (e) => {
-                    const logoData = e.target.result;
-                    localStorage.setItem('aarambha_logo', logoData);
-                    document.getElementById('club-logo').src = logoData;
-                    document.getElementById('logo-preview').src = logoData;
-                    document.getElementById('logo-preview').classList.remove('hidden');
-                    fileInput.value = '';
-                    showToast("Logo updated successfully!", "success");
+                reader.onload = async (e) => {
+                    try {
+                        const logoData = e.target.result;
+                        
+                        // Save to Firebase FIRST (for all users to see)
+                        if(db && state.user) {
+                            const configRef = doc(db, 'artifacts', APP_ID, 'settings', 'config');
+                            await setDoc(configRef, { logoData: logoData }, { merge: true });
+                            console.log("Logo saved to Firebase successfully");
+                        } else {
+                            console.warn("Firebase not available or user not logged in");
+                        }
+                        
+                        // Save to localStorage (local cache)
+                        localStorage.setItem('aarambha_logo', logoData);
+                        
+                        // Update all instances of logo on current page
+                        document.getElementById('club-logo').src = logoData;
+                        document.getElementById('logo-preview').src = logoData;
+                        document.getElementById('logo-preview').classList.remove('hidden');
+                        document.getElementById('logo-placeholder').classList.add('hidden');
+                        
+                        fileInput.value = '';
+                        showToast("✅ Logo saved and updated for all users!", "success");
+                        setLoading(false);
+                    } catch(error) {
+                        console.error("Error in reader callback:", error);
+                        showToast("Error saving logo: " + error.message, "error");
+                        setLoading(false);
+                    }
                 };
                 reader.readAsDataURL(file);
             } catch (error) {
                 console.error("Error uploading logo:", error);
-                showToast("Error uploading logo", "error");
-            } finally {
+                showToast("Error uploading logo: " + error.message, "error");
                 setLoading(false);
             }
         };
@@ -1166,7 +1256,7 @@
                         <div class="glass-card p-6 rounded-lg border-2 border-blue-200">
                             <div class="flex items-center mb-4">
                                 <i class="fas fa-image text-2xl text-blue-600 mr-3"></i>
-                                <h3 class="text-lg font-bold text-gray-900">Logo</h3>
+                                <h3 class="text-lg font-bold text-gray-900">Club Logo</h3>
                             </div>
                             <div class="bg-blue-50 rounded-lg p-4 mb-4 flex justify-center min-h-[120px] items-center">
                                 <img id="logo-preview" src="" alt="Logo" class="max-w-full max-h-[100px] rounded object-contain hidden">
@@ -1176,7 +1266,10 @@
                                 </div>
                             </div>
                             <input id="logo-file" type="file" accept="image/*" class="w-full text-xs text-gray-600 file:mr-2 file:py-2 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:bg-blue-600 file:text-white hover:file:bg-blue-700 transition mb-3">
-                            <button onclick="uploadLogo()" class="btn-primary w-full py-2 text-xs">Upload Logo</button>
+                            <button onclick="uploadLogo()" class="btn-primary w-full py-2 text-sm font-bold flex items-center justify-center gap-2">
+                                <i class="fas fa-save"></i>Save Logo for Everyone
+                            </button>
+                            <p class="text-xs text-gray-500 mt-2 text-center">Uploaded logo will appear on all users' devices</p>
                         </div>
 
                         <!-- Quick Stats Card -->
