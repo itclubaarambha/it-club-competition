@@ -231,8 +231,42 @@
                 console.error("[ERROR] Error loading data from Firebase:", error);
                 console.error("[ERROR] Error code:", error.code);
                 console.error("[ERROR] Error message:", error.message);
+                
+                // If it's a permission error, try to fetch winners data directly
+                if(error.code === 'permission-denied') {
+                    console.warn("[WARNING] Permission denied on config - trying direct winner fetch");
+                    fetchWinnersDirectly();
+                } else {
+                    // Still call updateUIWithWinners and updateUIWithDetails to display what we have
+                    updateUIWithDetails();
+                    updateUIWithWinners();
+                    updateProgramUI();
+                }
+                
                 loadLogoFromLocalStorage();
             });
+        }
+
+        // Fallback: Directly fetch winners when config is not accessible
+        async function fetchWinnersDirectly() {
+            try {
+                if(!db) return;
+                
+                const configRef = doc(db, 'artifacts', APP_ID, 'settings', 'config');
+                const configSnap = await getDoc(configRef);
+                
+                if(configSnap.exists()) {
+                    const data = configSnap.data();
+                    state.winners = data.winners || { first: null, second: null, third: null };
+                    console.log("[DEBUG] Winners fetched directly:", state.winners);
+                }
+                
+                updateUIWithDetails();
+                updateUIWithWinners();
+                updateProgramUI();
+            } catch(err) {
+                console.error("[ERROR] Failed to fetch winners directly:", err.code, err.message);
+            }
         }
 
         function loadLogoFromLocalStorage() {
@@ -338,16 +372,16 @@
             const pending = document.getElementById('results-pending');
             
             // Check if any winner is declared
-            const hasWinners = state.winners.first || state.winners.second || state.winners.third;
+            const hasWinners = state.winners && (state.winners.first || state.winners.second || state.winners.third);
 
             if (!hasWinners) {
-                container.classList.add('hidden');
-                pending.classList.remove('hidden');
+                if(container) container.classList.add('hidden');
+                if(pending) pending.classList.remove('hidden');
                 return;
             }
 
-            container.classList.remove('hidden');
-            pending.classList.add('hidden');
+            if(container) container.classList.remove('hidden');
+            if(pending) pending.classList.add('hidden');
 
             // Render Winner Cards Helper
             const renderWinnerCard = async (submissionId, elementId, place) => {
@@ -362,26 +396,33 @@
                     return;
                 }
                 
-                // Fetch submission details
-                const subRef = doc(db, 'artifacts', APP_ID, 'submissions', submissionId);
-                const subSnap = await getDoc(subRef);
-                
-                if(subSnap.exists()) {
-                    const data = subSnap.data();
-                    el.classList.remove('hidden');
-                    const imgEl = el.querySelector('img');
-                    const nameEl = el.querySelector('.winner-name');
-                    const semesterEl = el.querySelector('.winner-semester');
+                try {
+                    // Fetch submission details
+                    const subRef = doc(db, 'artifacts', APP_ID, 'submissions', submissionId);
+                    const subSnap = await getDoc(subRef);
                     
-                    if(imgEl) imgEl.src = data.fileURL;
-                    if(nameEl) nameEl.textContent = data.name;
-                    if(semesterEl) semesterEl.textContent = data.semester;
+                    if(subSnap.exists()) {
+                        const data = subSnap.data();
+                        el.classList.remove('hidden');
+                        const imgEl = el.querySelector('img');
+                        const nameEl = el.querySelector('.winner-name');
+                        const semesterEl = el.querySelector('.winner-semester');
+                        
+                        if(imgEl) imgEl.src = data.fileURL;
+                        if(nameEl) nameEl.textContent = data.name;
+                        if(semesterEl) semesterEl.textContent = data.semester;
+                    }
+                } catch(err) {
+                    console.warn(`[WARNING] Could not fetch winner ${place} (${submissionId}):`, err.code);
+                    // Still show the winner card, but without image/details
+                    const el = document.getElementById(elementId);
+                    if(el) el.classList.remove('hidden');
                 }
             };
 
-            await renderWinnerCard(state.winners.first, 'winner-1', '1st');
-            await renderWinnerCard(state.winners.second, 'winner-2', '2nd');
-            await renderWinnerCard(state.winners.third, 'winner-3', '3rd');
+            if(state.winners.first) await renderWinnerCard(state.winners.first, 'winner-1', '1st');
+            if(state.winners.second) await renderWinnerCard(state.winners.second, 'winner-2', '2nd');
+            if(state.winners.third) await renderWinnerCard(state.winners.third, 'winner-3', '3rd');
         }
 
         // --- SUBMISSION LOGIC ---
